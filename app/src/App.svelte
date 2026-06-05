@@ -102,16 +102,24 @@
         }),
       });
 
-      if (!res.ok) throw new Error('Network error');
+      if (!res.ok) {
+        // Try to extract the backend's error message
+        const errData = await res.json().catch(() => null);
+        throw new Error(errData?.error || `Server error (${res.status})`);
+      }
+
 
       const data = await res.json();
 
       // If this was a new session, set it as active
       if (!activeSessionId) {
-        activeSessionId = data.sessionId;
-        isStartingNewChat = false;
-        localStorage.setItem('sessionId', activeSessionId);
-        await fetchSessions();
+        const newSessionId = data.sessionId;
+        if (typeof newSessionId === 'string') {
+            activeSessionId = newSessionId;
+            isStartingNewChat = false;
+            localStorage.setItem('sessionId', activeSessionId);
+            await fetchSessions();
+        }
       }
 
       messages = [...messages, {
@@ -119,8 +127,8 @@
         sender: 'ai',
         text: data.reply,
       }];
-    } catch (err) {
-      errorMessage = 'Failed to get reply. Please try again.';
+    } catch (err: any) {
+      errorMessage = err.message || 'Failed to get reply. Please try again.';
     } finally {
       loading = false;
     }
