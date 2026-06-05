@@ -4,7 +4,7 @@ A mini AI customer support agent with a live chat widget. Built as a take‑home
 
 - **Backend:** Node.js + TypeScript, Express, PostgreSQL, Redis, OpenAI‑compatible LLM
 - **Frontend:** Svelte + TypeScript (Vite)
-
+- **Deployed Version:** [spur.tanwar.dev](https://spur.tanwar.dev)
 ---
 
 ## Features
