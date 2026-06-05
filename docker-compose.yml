@@ -1,0 +1,44 @@
+version: '3.8'
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: spur_user
+      POSTGRES_PASSWORD: spur_password
+      POSTGRES_DB: spur_chat
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+
+  redis:
+    image: redis:7-alpine
+    ports:
+      - "6379:6379"
+
+  backend:
+    build: ./backend
+    ports:
+      - "3000:3000"
+    environment:
+      DATABASE_URL: postgresql://spur_user:spur_password@postgres:5432/spur_chat
+      REDIS_URL: redis://redis:6379
+      LLM_API_KEY: ${LLM_API_KEY}
+      LLM_BASE_URL: ${LLM_BASE_URL:-https://api.openai.com/v1}
+      LLM_MODEL: ${LLM_MODEL:-gpt-4o-mini}
+    depends_on:
+      - postgres
+      - redis
+
+  frontend:
+    build: ./app
+    ports:
+      - "5173:5173"
+    environment:
+      VITE_API_BASE: http://backend:3000/api/chat
+    depends_on:
+      - backend
+
+volumes:
+  postgres_data:

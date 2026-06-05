@@ -42,22 +42,18 @@ export async function handleMessage(req: ChatRequest): Promise<ChatResponse> {
     [userMsgId, sessionId, req.message.trim()]
   );
 
-  // 4. Load recent history for LLM context
-  let historyMessages: Message[];
-  // Try Redis cache first
-  const cached = await cacheService.get(`conv:${sessionId}:history`);
-  if (cached) {
-    historyMessages = JSON.parse(cached);
-  } else {
-    const result = await pool.query<Message>(
-      `SELECT id, conversation_id as "conversationId", sender, text, created_at as "createdAt"
-       FROM messages WHERE conversation_id = $1
-       ORDER BY created_at ASC
-       LIMIT $2`,
-      [sessionId, config.maxHistoryMessages * 2] // *2 because each exchange is 2 messages
-    );
-    historyMessages = result.rows;
-  }
+  // 4. Clear stale cache so we fetch history that includes the new message
+  await cacheService.del(`conv:${sessionId}:history`);
+
+  // 5. Load fresh history from DB (includes the just-saved user message)
+  const result = await pool.query<Message>(
+    `SELECT id, conversation_id as "conversationId", sender, text, created_at as "createdAt"
+     FROM messages WHERE conversation_id = $1
+     ORDER BY created_at ASC
+     LIMIT $2`,
+    [sessionId, config.maxHistoryMessages * 2] // *2 because each exchange is 2 messages
+  );
+  const historyMessages = result.rows;
 
   // Convert to LLM format
   const llmHistory = historyMessages.map((m) => ({
@@ -65,17 +61,17 @@ export async function handleMessage(req: ChatRequest): Promise<ChatResponse> {
     content: m.text,
   }));
 
-  // 5. Call LLM
+  // 6. Call LLM
   const llmResult = await generateReply(llmHistory);
 
-  // 6. Save AI reply
+  // 7. Save AI reply
   const aiMsgId = uuidv4();
   await pool.query(
     `INSERT INTO messages (id, conversation_id, sender, text) VALUES ($1, $2, 'ai', $3)`,
     [aiMsgId, sessionId, llmResult.reply]
   );
 
-  // 7. Update cache with full conversation (append the new user + AI messages)
+  // 8. Update cache with the full conversation (existing history + new user + AI)
   const updatedHistory = [
     ...historyMessages,
     { id: userMsgId, conversationId: sessionId, sender: 'user' as const, text: req.message.trim(), createdAt: new Date() },
